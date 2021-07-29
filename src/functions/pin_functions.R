@@ -42,7 +42,7 @@ compute_indicators_wash <- function(data, indicators) {
   
   df <- create_indicators_placeholder(data, indicators)
 
-
+###YS water_trucking should be classified as un-improved
   improved_water_source <- c("piped_system", "protected_well_pump", "protected_well_hand", "borehole","water_tank", "water_trucking")
   no_improved_water_source <- c("water_kiosk", "vendor_shops", "unprotected_well")
   surface_water <- c("river_pond")
@@ -89,12 +89,12 @@ compute_indicators_wash <- function(data, indicators) {
   wash_idicator2 = case_when(
     ## No access to latrine - open defecation
     sanitation_facility %in% open_defecation ~ 5,
-    
+    ###YS sharing_sanitation_facilities_yes is number of hh, not number of people
     ## HH: Access to unmproved sanitation facilities, shared with more than 50 people
     sanitation_facility %in% no_improved_sanitation_facilities &
      sharing_sanitation_facilities %in% c("yes") &
      sharing_sanitation_facilities_yes_int >=50 ~ 4,
-    
+    ###YS sharing_sanitation_facilities_yes is number of hh, not number of people
     ## HH: Access to unmproved sanitation facilities, shared with more than 20 people
     sanitation_facility %in% no_improved_sanitation_facilities &
      sharing_sanitation_facilities %in% c("yes") &
@@ -117,7 +117,7 @@ compute_indicators_wash <- function(data, indicators) {
     ## Soap is not available at home and no handwashing facility with soap and water on premise
     have_soap %in% c("no") &
       hand_washing_facility %in% c("no_specific","tippy_tap") ~ 4,
-    
+    ###YS why the second condition? should it be sev 4? as the main indicator is have_soap
     ## Soap is available at home BUT no handwashing facility on premises with soap and wate
     (have_soap %in% c("yes") & hand_washing_facility %in% c("no_specific","tippy_tap")) |
       (have_soap %in% c("no") & hand_washing_facility == "dnk" ) ~ 3,
@@ -125,7 +125,7 @@ compute_indicators_wash <- function(data, indicators) {
     ## EITHER soap is available at home OR latrines used by HH have functional facilities for handwashing
     have_soap %in% c("yes") |
       hand_washing_facility %in% c("buckets_with_taps","sink_tap_water") ~ 2,
-    
+    ###YS why tippy tap in sev 1?
     ## Soap is available at home AND latrines used by HH have functional facilities for handwashing
     have_soap %in% c("yes") &
       hand_washing_facility %in% c("tippy_tap","buckets_with_taps","sink_tap_water") ~ 1,
@@ -558,9 +558,9 @@ compute_indicators_protection <- function(data, indicators) {
       pct_with_diff >= 0.5 ~ 4 ,
       
       ## Households with at least one member identified as having a disability - any of the 6 difficulties" and answered "a lot of difficulty or cannot do at all"
-      pct_with_diff >= 0 ~ 3 ,
+      pct_with_diff >= 0 ~ 3 , ###YS should be exclusively above 0
       
-      TRUE ~ 1
+      TRUE ~ 1 ###YS should include the 0
       
     ),
     
@@ -580,7 +580,6 @@ compute_indicators_snfi <- function(data, indicators) {
   df <- create_indicators_placeholder(data, indicators)
   
   shlter_loop <-  import("input/Raw_data_loops.xlsx",sheet="consent_controller_shelter_many")
-  
   shelters_repeat <- shlter_loop %>% group_by(`_parent_index`) %>% summarise(
     x1 = paste(consent_controller.shelter.many_shelters.shelter_types,collapse = "#"),
     x2 = fn_select_one_mode (consent_controller.shelter.many_shelters.shelter_types)
@@ -619,6 +618,7 @@ compute_indicators_snfi <- function(data, indicators) {
      shelt_count.sum_rooms = as.numeric(shelt_count.sum_rooms)) %>%
     mutate(
      surface_per_person = (shelt_count.sum_rooms * avg_size_shelter) / hh_size,
+     ###YS     grep for nb_shelter_issues includes shelter_issues.no_issue
      nb_shelter_issues = rowSums(.[grep("^(shelter_enclosure_issue|shelter_damage|shelter_issues)\\.(?!(none$|dnk$|prefer_not_answer$))",names(.),perl = T)], na.rm = TRUE),
      HLP_problems = ifelse(rowSums(.[grep("^shelter_problems\\.(?!(none$|not_sure$))",names(.),perl = T)], na.rm = TRUE)>=1,"yes","no"),
      nb_available_items = rowSums(.[grep("^currently_access_nfi\\.",names(.))], na.rm = TRUE)
@@ -1059,7 +1059,7 @@ compute_indicators_cp <- function(data, indicators) {
       
       ## 1 Child (6-14) or (15-17) engaged in Child Labour
       nb_children_working == 1 ~ 3,
-      
+      ###YS should none reported be nb_children_working == 0 ? (includes also hh without children for sev1)
       ## None Reported
       TRUE ~ 1,
       
