@@ -42,7 +42,8 @@ compute_indicators_wash <- function(data, indicators) {
   
   df <- create_indicators_placeholder(data, indicators)
 
-###YS water_trucking should be classified as un-improved
+### YS water_trucking should be classified as un-improved
+### AB Cluster asked to change it from no_improbed to improved  
   improved_water_source <- c("piped_system", "protected_well_pump", "protected_well_hand", "borehole","water_tank", "water_trucking")
   no_improved_water_source <- c("water_kiosk", "vendor_shops", "unprotected_well")
   surface_water <- c("river_pond")
@@ -93,12 +94,13 @@ compute_indicators_wash <- function(data, indicators) {
     ## HH: Access to unmproved sanitation facilities, shared with more than 50 people
     sanitation_facility %in% no_improved_sanitation_facilities &
      sharing_sanitation_facilities %in% c("yes") &
-     sharing_sanitation_facilities_yes_int >=50 ~ 4,
+     (sharing_sanitation_facilities_yes_int * 7) >=50 ~ 4,
     ###YS sharing_sanitation_facilities_yes is number of hh, not number of people
+    ###AB One possible solution is to multiple the number of hh by the average size of hh but we need to validate this with the cluster
     ## HH: Access to unmproved sanitation facilities, shared with more than 20 people
     sanitation_facility %in% no_improved_sanitation_facilities &
      sharing_sanitation_facilities %in% c("yes") &
-     sharing_sanitation_facilities_yes_int >=20 ~ 3,
+     (sharing_sanitation_facilities_yes_int * 7) >=20 ~ 3,
     
     ## Access to unimproved sanitation facilities
     sanitation_facility %in% no_improved_sanitation_facilities ~ 2,
@@ -117,18 +119,21 @@ compute_indicators_wash <- function(data, indicators) {
     ## Soap is not available at home and no handwashing facility with soap and water on premise
     have_soap %in% c("no") &
       hand_washing_facility %in% c("no_specific","tippy_tap") ~ 4,
-    ###YS why the second condition? should it be sev 4? as the main indicator is have_soap
-    ## Soap is available at home BUT no handwashing facility on premises with soap and wate
+    ### YS why the second condition? should it be sev 4? as the main indicator is have_soap
+    ### AB: We crosschecked with the Cluster, and they said the indicator goes beyond just access to soap, 
+    ### but also the link between access to soap and functioonal handwashing facility.
+    ## Soap is available at home BUT no handwashing facility on premises with soap and water
     (have_soap %in% c("yes") & hand_washing_facility %in% c("no_specific","tippy_tap")) |
       (have_soap %in% c("no") & hand_washing_facility == "dnk" ) ~ 3,
     
     ## EITHER soap is available at home OR latrines used by HH have functional facilities for handwashing
     have_soap %in% c("yes") |
       hand_washing_facility %in% c("buckets_with_taps","sink_tap_water") ~ 2,
-    ###YS why tippy tap in sev 1?
+    ### YS why tippy tap in sev 1?
+    ### That was a typo! Thank you for spotting it
     ## Soap is available at home AND latrines used by HH have functional facilities for handwashing
     have_soap %in% c("yes") &
-      hand_washing_facility %in% c("tippy_tap","buckets_with_taps","sink_tap_water") ~ 1,
+      hand_washing_facility %in% c("buckets_with_taps","sink_tap_water") ~ 1,
     
     ## Dnk
     TRUE ~ 1
@@ -468,7 +473,10 @@ compute_indicators_protection <- function(data, indicators) {
       )  
   
 
-
+    data_protection_prep %>% filter(killed_hh >= 1 ) %>% group_by(district) %>% summarise(n()) %>% View()
+    data_protection_prep %>% filter(mine_uxo_hh >= 1 ) %>% nrow ()
+    data_protection_prep %>% filter(fgm_hh >= 1 ) %>% nrow ()
+     
     data_protection_prep %>% mutate(
     #### protection indicator 1 ####
     ## % of HHs reporting concerns from any harm, physical threats or discrimination in the area where they are living.
@@ -558,7 +566,7 @@ compute_indicators_protection <- function(data, indicators) {
       pct_with_diff >= 0.5 ~ 4 ,
       
       ## Households with at least one member identified as having a disability - any of the 6 difficulties" and answered "a lot of difficulty or cannot do at all"
-      pct_with_diff >= 0 ~ 3 , ###YS should be exclusively above 0
+      pct_with_diff > 0 ~ 3 , ###YS should be exclusively above 0 ### AB Corrected
       
       TRUE ~ 1 ###YS should include the 0
       
@@ -580,33 +588,41 @@ compute_indicators_snfi <- function(data, indicators) {
   df <- create_indicators_placeholder(data, indicators)
   
   shlter_loop <-  import("input/Raw_data_loops.xlsx",sheet="consent_controller_shelter_many")
-  shelters_repeat <- shlter_loop %>% group_by(`_parent_index`) %>% summarise(
-    x1 = paste(consent_controller.shelter.many_shelters.shelter_types,collapse = "#"),
-    x2 = fn_select_one_mode (consent_controller.shelter.many_shelters.shelter_types)
-  ) 
-  
-  data_snfi_prep <- left_join(data, shelters_repeat %>% select(index=`_parent_index`,shelter_type=x2) )
   
   shelter_average_size = data.frame(shelter_type = c("brick", "cgi", "buul", "mud", "timer_", "stone", "unfinished", "stick", "collective", "tent", "none", "not_sure"),
                                     avg_size_shelter = c(15, 16, 6, 20, 20, 15, 16, 9, 30, 16, 0, 0),
                                     stringsAsFactors = F
-                                    )
+  )
   
-  data_snfi_prep <- left_join(data_snfi_prep, shelter_average_size )
+
+
+  colnames(shlter_loop)[1]="shelter_type"
+  
+  shlter_loop <- left_join(shlter_loop,shelter_average_size)
+  
+  
+  shelters_repeat <- shlter_loop %>% filter(shelter_type!="none") %>%  group_by(`_parent_index`) %>% summarise(
+    #x1 = paste(shelter_type,collapse = "#"),
+    avg_size_shelter = mean(avg_size_shelter,na.rm=T)
+  ) 
+
+  
+  data_snfi_prep <- left_join(data, shelters_repeat %>% select(index=`_parent_index`,avg_size_shelter) )
   
   data_snfi_prep$avg_size_shelter[is.na(data_snfi_prep$avg_size_shelter)] <- 0
+  
   
   shlter_loop <- left_join(shlter_loop,data %>% select(`_parent_index` = index,population_group)) 
   
   
   shelters_repeat_HC <- shlter_loop %>% filter(population_group=="HC") %>% group_by(`_parent_index`) %>% summarise(
-    x1 = paste(consent_controller.shelter.many_shelters.shelter_types,collapse = "#"),
-    x2 = fn_select_one_mode_shelter_HC (consent_controller.shelter.many_shelters.shelter_types)
+    x1 = paste(shelter_type,collapse = "#"),
+    x2 = fn_select_one_mode_shelter_HC (shelter_type)
   )
   
   shelters_repeat_IDP <- shlter_loop %>% filter(population_group=="IDP") %>% group_by(`_parent_index`) %>% summarise(
-    x1 = paste(consent_controller.shelter.many_shelters.shelter_types,collapse = "#"),
-    x2 = fn_select_one_mode_shelter_IDP(consent_controller.shelter.many_shelters.shelter_types)
+    x1 = paste(shelter_type,collapse = "#"),
+    x2 = fn_select_one_mode_shelter_IDP(shelter_type)
   ) 
   
   shelters_repeat_2 <- rbind(shelters_repeat_HC,shelters_repeat_IDP) %>% select(index =`_parent_index`,snfi_ind2_sev = x2)
@@ -619,13 +635,15 @@ compute_indicators_snfi <- function(data, indicators) {
     mutate(
      surface_per_person = (shelt_count.sum_rooms * avg_size_shelter) / hh_size,
      ###YS     grep for nb_shelter_issues includes shelter_issues.no_issue
-     nb_shelter_issues = rowSums(.[grep("^(shelter_enclosure_issue|shelter_damage|shelter_issues)\\.(?!(none$|dnk$|prefer_not_answer$))",names(.),perl = T)], na.rm = TRUE),
+     ### AB That's weird!! Looking at the tool shelter_issues doesn't have a no_issue option! But probably tool was updated at some point to remove the option
+     nb_shelter_issues = rowSums(.[grep("^(shelter_enclosure_issue|shelter_damage|shelter_issues)\\.(?!(none$|dnk$|prefer_not_answer$|no_issue$))",names(.),perl = T)], na.rm = TRUE),
      HLP_problems = ifelse(rowSums(.[grep("^shelter_problems\\.(?!(none$|not_sure$))",names(.),perl = T)], na.rm = TRUE)>=1,"yes","no"),
      nb_available_items = rowSums(.[grep("^currently_access_nfi\\.",names(.))], na.rm = TRUE)
     ) 
 
+
   
-  data_snfi_prep <- data_snfi_prep %>% mutate(
+   data_snfi_prep %>% mutate(
     #### SNFI indicator 1 ####
     ## SNFI: % of HHs having adequate living space
     SNFI_idicator1 = case_when(
@@ -653,7 +671,7 @@ compute_indicators_snfi <- function(data, indicators) {
     ## SNFI: % of HHs living in sub-standard shelter
     SNFI_idicator2 = case_when(
       ## None (sleeping in open)OR (Shelter Type =”” AND No. of shelter = 0)
-      how_many_shelters == 0  ~ 5,
+      how_many_shelters == 0  | snfi_ind2_sev == "5" ~ 5,
       
       ## Buul in an IDP SiteORMakeshift shelter
       snfi_ind2_sev == "4" ~ 4,
@@ -668,6 +686,7 @@ compute_indicators_snfi <- function(data, indicators) {
       snfi_ind2_sev == "1" ~ 1,
       
     ),
+    
     
     
     
@@ -696,14 +715,17 @@ compute_indicators_snfi <- function(data, indicators) {
     #### SNFI indicator 4 ####
     ## SNFI: % of HHs having security of tenure issues
     SNFI_idicator4 = case_when(
-      ## Occupancy arrangement  NOT "ownership"AND Has HLP Problem AND Does Not Have written documentation
-      shelter_occupancy != "ownership" & HLP_problems == "yes" & shelter_format_doc != "yes"  ~ 3,
+  
+      
+      ## Occupancy arrangement ="ownership" AND No HLP Problem AND Has written documentation
+      shelter_occupancy == "ownership" & HLP_problems == "no" & shelter_format_doc == "yes" ~ 1,
       
       ## Occupancy arrangement ="ownership" OR No HLP Problem OR Has written documentation
       shelter_occupancy == "ownership" | HLP_problems == "no" | shelter_format_doc == "yes"  ~ 2,
       
-      ## Occupancy arrangement ="ownership" AND No HLP Problem AND Has written documentation
-      shelter_occupancy == "ownership" & HLP_problems == "no" & shelter_format_doc == "yes" ~ 1,
+      ## Occupancy arrangement  NOT "ownership"AND Has HLP Problem AND Does Not Have written documentation
+      shelter_occupancy != "ownership" & HLP_problems == "yes" & shelter_format_doc != "yes"  ~ 3,
+      
       
     ),
     
@@ -1059,10 +1081,12 @@ compute_indicators_cp <- function(data, indicators) {
       
       ## 1 Child (6-14) or (15-17) engaged in Child Labour
       nb_children_working == 1 ~ 3,
-      ###YS should none reported be nb_children_working == 0 ? (includes also hh without children for sev1)
+     
+      ### YS should none reported be nb_children_working == 0 ? (includes also hh without children for sev1)
+      ### TODO AB Updated 
       ## None Reported
-      TRUE ~ 1,
-      
+      hh_children_int !=0 & nb_children_working == 0 ~1
+
     ),) %>%  select(starts_with("CP_idicator")) -> res
 
   
