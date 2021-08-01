@@ -1,12 +1,12 @@
 create_indicators_placeholder <- function(data, indicators) {
   df <- data
-
+  
   for (indicator in indicators) {
     df[[paste0(indicator)]] <- as.integer(NA)
   }
-
+  
   df <- df %>% select(all_of(indicators))
-
+  
   return(df)
 }
 
@@ -41,9 +41,9 @@ compute_indicators <- function(data, cluster, indicators) {
 compute_indicators_wash <- function(data, indicators) {
   
   df <- create_indicators_placeholder(data, indicators)
-
-### YS water_trucking should be classified as un-improved
-### AB Cluster asked to change it from no_improbed to improved  
+  
+  ### YS water_trucking should be classified as un-improved
+  ### AB Cluster asked to change it from no_improbed to improved  
   improved_water_source <- c("piped_system", "protected_well_pump", "protected_well_hand", "borehole","water_tank", "water_trucking")
   no_improved_water_source <- c("water_kiosk", "vendor_shops", "unprotected_well")
   surface_water <- c("river_pond")
@@ -53,219 +53,219 @@ compute_indicators_wash <- function(data, indicators) {
   no_improved_sanitation_facilities <-  c("pit_latrine_without_slap", "open_hole","bucket_toilet", "plastic_bag", "hanging_latrine")
   open_defecation <- c("none_of_the_above")
   
-
+  
   
   data_wash_prep <- data %>% 
     mutate(
       sharing_sanitation_facilities_yes_int = as.integer(sharing_sanitation_facilities_yes)
     )
-
+  
   
   data_wash_indicators <- data_wash_prep %>% mutate (
-
-  #### wash indicator 1 ####
-  ## % of HHs by type of primary source of drinking water
-  wash_idicator1 = case_when(
-    ## Water comes directly from rivers, lakes, ponds, etc.
-    main_source_water %in% surface_water ~ 5,
-  
-    ## Water comes from an unimproved water source
-    main_source_water %in% no_improved_water_source ~ 4,
-  
-    ## Water comes from an improved water source but collection time is more than 15 min for a roundtrip, including queuing
-    time_fetching_water %in% c("btw_16_30_minutes", "more_31_minutes") & main_source_water %in% improved_water_source ~ 3,
-  
-    ## Water comes from an improved water source and  collection time is not more than 15 min for a roundtrip, including queuing
-    time_fetching_water %in% c("less_5_minutes", "btw_5_15_minutes") & main_source_water %in% improved_water_source ~ 2,
-  
-    ## HH: Water comes from an improved water source which is located on premises
-    time_fetching_water == "water_premises" & main_source_water %in% improved_water_source ~ 1, 
     
-    ## dnk
-    TRUE ~ 1,
-  ),
-
-  #### wash indicator 2 ####
-  ## % of HHs using a sanitation facility - by type of sanitation facility used
-  wash_idicator2 = case_when(
-    ## No access to latrine - open defecation
-    sanitation_facility %in% open_defecation ~ 5,
-    ###YS sharing_sanitation_facilities_yes is number of hh, not number of people
-    ## HH: Access to unmproved sanitation facilities, shared with more than 50 people
-    sanitation_facility %in% no_improved_sanitation_facilities &
-     sharing_sanitation_facilities %in% c("yes") &
-     (sharing_sanitation_facilities_yes_int * 7) >=50 ~ 4,
-    ###YS sharing_sanitation_facilities_yes is number of hh, not number of people
-    ###AB One possible solution is to multiple the number of hh by the average size of hh but we need to validate this with the cluster
-    ## HH: Access to unmproved sanitation facilities, shared with more than 20 people
-    sanitation_facility %in% no_improved_sanitation_facilities &
-     sharing_sanitation_facilities %in% c("yes") &
-     (sharing_sanitation_facilities_yes_int * 7) >=20 ~ 3,
-    
-    ## Access to unimproved sanitation facilities
-    sanitation_facility %in% no_improved_sanitation_facilities ~ 2,
-    
-    ## Access to improved sanitation facilities
-    sanitation_facility %in% improved_sanitation_facilities ~ 1,
-    
-    ## Dnk
-    TRUE ~ 1
-    
-  ),
-  
-  #### wash indicator 3 ####
-  ## % of HHs with access to soap
-  wash_idicator3 = case_when(
-    ## Soap is not available at home and no handwashing facility with soap and water on premise
-    have_soap %in% c("no") &
-      hand_washing_facility %in% c("no_specific","tippy_tap") ~ 4,
-    ### YS why the second condition? should it be sev 4? as the main indicator is have_soap
-    ### AB: We crosschecked with the Cluster, and they said the indicator goes beyond just access to soap, 
-    ### but also the link between access to soap and functioonal handwashing facility.
-    ## Soap is available at home BUT no handwashing facility on premises with soap and water
-    (have_soap %in% c("yes") & hand_washing_facility %in% c("no_specific","tippy_tap")) |
-      (have_soap %in% c("no") & hand_washing_facility == "dnk" ) ~ 3,
-    
-    ## EITHER soap is available at home OR latrines used by HH have functional facilities for handwashing
-    have_soap %in% c("yes") |
-      hand_washing_facility %in% c("buckets_with_taps","sink_tap_water") ~ 2,
-    ### YS why tippy tap in sev 1?
-    ### That was a typo! Thank you for spotting it
-    ## Soap is available at home AND latrines used by HH have functional facilities for handwashing
-    have_soap %in% c("yes") &
-      hand_washing_facility %in% c("buckets_with_taps","sink_tap_water") ~ 1,
-    
-    ## Dnk
-    TRUE ~ 1
-    
-  ),
-  
-  
-  #### wash indicator 4 ####
-  ## % of HHs reporting having enough water for drinking, cooking, bathing and washing
-  wash_idicator4 = case_when(
-    ## Not enough water for drinking OR domestic uses
-    drinking_water == "no" | (domestice_water == "no" & cooking_water == "no" & hygiene_water == "no") ~ 5,
-    
-    ## EITHER enough water for drinking OR for domestic uses PLUS The HH does not have jerry cans
-    (drinking_water == "yes" | (domestice_water == "yes" & cooking_water == "yes" & hygiene_water == "yes") ) & currently_access_nfi.jerrycans_2 == 0 ~ 4,
-    
-    ## EITHER enough water for drinking OR for domestic uses PLUS The HH has jerry cans
-    (drinking_water == "yes" | (domestice_water == "yes" & cooking_water == "yes" & hygiene_water == "yes") ) & currently_access_nfi.jerrycans_2 == 1 ~ 3,
-    
-    ## Enough water for drinking AND domestic uses (cooking, bathing, and cleaning, not agriculture or livestock) PLUS The HH does not have jerry cans
-    (drinking_water == "yes" & domestice_water == "yes" & cooking_water == "yes" & hygiene_water == "yes") & currently_access_nfi.jerrycans_2 == 0 ~ 2,
-    
-    ## Enough water for drinking AND domestic uses (cooking, bathing, and cleaning, not agriculture or livestock)  PLUS The HH has jerry cans
-    (drinking_water == "yes" & domestice_water == "yes" & cooking_water == "yes" & hygiene_water == "yes") & currently_access_nfi.jerrycans_2 == 1 ~ 1,
-    
-    ##
-    TRUE ~ 1
-    
-  ),
-  
-  
-  #### wash indicator 5 ####
-  ## % of HHs with access to a sanitation facility safe for all members to use
-  
-  wash_idicator5 = case_when(
-    ## HH using latrines with incomplete walls AND no door, locks or functioning lighting
-      sanitation_features.walls == 0 &
-      sanitation_features.doors == 0 &
-      sanitation_features.locks == 0 &
-      sanitation_features.inside_light == 0 &
-      sanitation_features.outside_light == 0 ~ 4,
-    
-    ## HH: HH using latrines with walls, door, BUT NO locks and functioning lighting
-    sanitation_features.doors == 1 &
-      sanitation_features.walls == 1 &
-      sanitation_features.locks == 0 &
-      sanitation_features.inside_light == 0 &
-      sanitation_features.outside_light == 0 ~ 3,
-    
-    ## HH: HH using latrines with walls, door, locks and functioning lighting
-    sanitation_features.doors == 1 &
-      sanitation_features.walls == 1 &
-      sanitation_features.locks == 1 &
-      sanitation_features.inside_light == 1 &
-      sanitation_features.outside_light == 1~ 1,
-    
-    TRUE ~ 1,
-    
-  ),
-  
-  
-  #### wash indicator 6 - temporary 1 ####
-  ## % Households using negative coping strategies to access water
-  wash_tmp_idicator6_1 = case_when(
-
-    ## 3
-    adopt_lack_water.fetch_dangerous_places == 1 | 
-      adopt_lack_water.drink_less  == 1 ~ 3,
-    
-    ## 2
-    adopt_lack_water.rely_unimproved_sources_drinking == 1 |
-      adopt_lack_water.rely_surface_water_drinking == 1 |
-      adopt_lack_water.send_children_fetch  == 1 |
-      adopt_lack_water.reduce_water_consumption == 1  ~ 2,
-    
-    ## 1
-    adopt_lack_water.spend_money_water == 1 |
-      adopt_lack_water.fetch_further_source == 1 |
-      adopt_lack_water.rely_unimproved_sources_for_other == 1 |
-      adopt_lack_water.rely_surface_water_other  ~ 1,
-    
-    ## 
-    TRUE ~ 0
-  ),
-  
-  
-  #### wash indicator 6 - temporary 2 ####
-  ## % Households using negative coping strategies to access sanitation facilities in the past 1 month/30 days
-  wash_tmp_idicator6_2 = case_when(
-
-    ## 3
-    adapt_sanitation_issues.defecate_open == 1 |
-      adapt_sanitation_issues.going_dangerous_place == 1 ~ 3 ,
-    
-    ## 2
-    adapt_sanitation_issues.defecate_plastic_bags == 1 |
-      adapt_sanitation_issues.going_night == 1 ~ 2 ,
-    
-    ## 1
-    adapt_sanitation_issues.rely_unhygienic_facilities == 1 |
-    adapt_sanitation_issues.rely_comunal_facilities == 1 |
-    adapt_sanitation_issues.going_further_latrines == 1 ~ 1 ,
-    
-    ## 
-    TRUE ~ 0,
-    
-  ),
-  
-  
-  #### wash indicator 6 - temporary 3 ####
-  ## % Households using negative coping strategies to access hygienic or menstrual materials
-  wash_tmp_idicator6_3 = case_when(
-    
-    ## 3
-    adopt_sanitaiton_items.buyying_nfi_dangerous_market_places == 1 |
-      adopt_sanitaiton_items.reduce_nfi_consumption_personal == 1 ~ 3 ,
-    
-    ## 2
-    adopt_sanitaiton_items.reduce_nfi_consumption_other == 1 ~ 2,
+    #### wash indicator 1 ####
+    ## % of HHs by type of primary source of drinking water
+    wash_idicator1 = case_when(
+      ## Water comes directly from rivers, lakes, ponds, etc.
+      main_source_water %in% surface_water ~ 5,
       
+      ## Water comes from an unimproved water source
+      main_source_water %in% no_improved_water_source ~ 4,
+      
+      ## Water comes from an improved water source but collection time is more than 15 min for a roundtrip, including queuing
+      time_fetching_water %in% c("btw_16_30_minutes", "more_31_minutes") & main_source_water %in% improved_water_source ~ 3,
+      
+      ## Water comes from an improved water source and  collection time is not more than 15 min for a roundtrip, including queuing
+      time_fetching_water %in% c("less_5_minutes", "btw_5_15_minutes") & main_source_water %in% improved_water_source ~ 2,
+      
+      ## HH: Water comes from an improved water source which is located on premises
+      time_fetching_water == "water_premises" & main_source_water %in% improved_water_source ~ 1, 
+      
+      ## dnk
+      TRUE ~ 1,
+    ),
     
-    ## 1
-    adopt_sanitaiton_items.rely_less_types_nfi == 1 | 
-      adopt_sanitaiton_items.rely_soap_substitutes == 1 |
-      adopt_sanitaiton_items.buyying_nfi_market == 1 |
-      adopt_sanitaiton_items.borrow_nfi_freind_relative == 1 |
-      adopt_sanitaiton_items.spend_money_nfi == 1 ~ 1,
+    #### wash indicator 2 ####
+    ## % of HHs using a sanitation facility - by type of sanitation facility used
+    wash_idicator2 = case_when(
+      ## No access to latrine - open defecation
+      sanitation_facility %in% open_defecation ~ 5,
+      ###YS sharing_sanitation_facilities_yes is number of hh, not number of people
+      ## HH: Access to unmproved sanitation facilities, shared with more than 50 people
+      sanitation_facility %in% no_improved_sanitation_facilities &
+        sharing_sanitation_facilities %in% c("yes") &
+        (sharing_sanitation_facilities_yes_int * 7) >=50 ~ 4,
+      ###YS sharing_sanitation_facilities_yes is number of hh, not number of people
+      ###AB One possible solution is to multiple the number of hh by the average size of hh but we need to validate this with the cluster
+      ## HH: Access to unmproved sanitation facilities, shared with more than 20 people
+      sanitation_facility %in% no_improved_sanitation_facilities &
+        sharing_sanitation_facilities %in% c("yes") &
+        (sharing_sanitation_facilities_yes_int * 7) >=20 ~ 3,
+      
+      ## Access to unimproved sanitation facilities
+      sanitation_facility %in% no_improved_sanitation_facilities ~ 2,
+      
+      ## Access to improved sanitation facilities
+      sanitation_facility %in% improved_sanitation_facilities ~ 1,
+      
+      ## Dnk
+      TRUE ~ 1
+      
+    ),
     
-    ## 
-    TRUE ~ 0
+    #### wash indicator 3 ####
+    ## % of HHs with access to soap
+    wash_idicator3 = case_when(
+      ## Soap is not available at home and no handwashing facility with soap and water on premise
+      have_soap %in% c("no") &
+        hand_washing_facility %in% c("no_specific","tippy_tap") ~ 4,
+      ### YS why the second condition? should it be sev 4? as the main indicator is have_soap
+      ### AB: We crosschecked with the Cluster, and they said the indicator goes beyond just access to soap, 
+      ### but also the link between access to soap and functioonal handwashing facility.
+      ## Soap is available at home BUT no handwashing facility on premises with soap and water
+      (have_soap %in% c("yes") & hand_washing_facility %in% c("no_specific","tippy_tap")) |
+        (have_soap %in% c("no") & hand_washing_facility == "dnk" ) ~ 3,
+      
+      ## EITHER soap is available at home OR latrines used by HH have functional facilities for handwashing
+      have_soap %in% c("yes") |
+        hand_washing_facility %in% c("buckets_with_taps","sink_tap_water") ~ 2,
+      ### YS why tippy tap in sev 1?
+      ### That was a typo! Thank you for spotting it
+      ## Soap is available at home AND latrines used by HH have functional facilities for handwashing
+      have_soap %in% c("yes") &
+        hand_washing_facility %in% c("buckets_with_taps","sink_tap_water") ~ 1,
+      
+      ## Dnk
+      TRUE ~ 1
+      
+    ),
     
-  )  ) 
+    
+    #### wash indicator 4 ####
+    ## % of HHs reporting having enough water for drinking, cooking, bathing and washing
+    wash_idicator4 = case_when(
+      ## Not enough water for drinking OR domestic uses
+      drinking_water == "no" | (domestice_water == "no" & cooking_water == "no" & hygiene_water == "no") ~ 5,
+      
+      ## EITHER enough water for drinking OR for domestic uses PLUS The HH does not have jerry cans
+      (drinking_water == "yes" | (domestice_water == "yes" & cooking_water == "yes" & hygiene_water == "yes") ) & currently_access_nfi.jerrycans_2 == 0 ~ 4,
+      
+      ## EITHER enough water for drinking OR for domestic uses PLUS The HH has jerry cans
+      (drinking_water == "yes" | (domestice_water == "yes" & cooking_water == "yes" & hygiene_water == "yes") ) & currently_access_nfi.jerrycans_2 == 1 ~ 3,
+      
+      ## Enough water for drinking AND domestic uses (cooking, bathing, and cleaning, not agriculture or livestock) PLUS The HH does not have jerry cans
+      (drinking_water == "yes" & domestice_water == "yes" & cooking_water == "yes" & hygiene_water == "yes") & currently_access_nfi.jerrycans_2 == 0 ~ 2,
+      
+      ## Enough water for drinking AND domestic uses (cooking, bathing, and cleaning, not agriculture or livestock)  PLUS The HH has jerry cans
+      (drinking_water == "yes" & domestice_water == "yes" & cooking_water == "yes" & hygiene_water == "yes") & currently_access_nfi.jerrycans_2 == 1 ~ 1,
+      
+      ##
+      TRUE ~ 1
+      
+    ),
+    
+    
+    #### wash indicator 5 ####
+    ## % of HHs with access to a sanitation facility safe for all members to use
+    
+    wash_idicator5 = case_when(
+      ## HH using latrines with incomplete walls AND no door, locks or functioning lighting
+      sanitation_features.walls == 0 &
+        sanitation_features.doors == 0 &
+        sanitation_features.locks == 0 &
+        sanitation_features.inside_light == 0 &
+        sanitation_features.outside_light == 0 ~ 4,
+      
+      ## HH: HH using latrines with walls, door, BUT NO locks and functioning lighting
+      sanitation_features.doors == 1 &
+        sanitation_features.walls == 1 &
+        sanitation_features.locks == 0 &
+        sanitation_features.inside_light == 0 &
+        sanitation_features.outside_light == 0 ~ 3,
+      
+      ## HH: HH using latrines with walls, door, locks and functioning lighting
+      sanitation_features.doors == 1 &
+        sanitation_features.walls == 1 &
+        sanitation_features.locks == 1 &
+        sanitation_features.inside_light == 1 &
+        sanitation_features.outside_light == 1~ 1,
+      
+      TRUE ~ 1,
+      
+    ),
+    
+    
+    #### wash indicator 6 - temporary 1 ####
+    ## % Households using negative coping strategies to access water
+    wash_tmp_idicator6_1 = case_when(
+      
+      ## 3
+      adopt_lack_water.fetch_dangerous_places == 1 | 
+        adopt_lack_water.drink_less  == 1 ~ 3,
+      
+      ## 2
+      adopt_lack_water.rely_unimproved_sources_drinking == 1 |
+        adopt_lack_water.rely_surface_water_drinking == 1 |
+        adopt_lack_water.send_children_fetch  == 1 |
+        adopt_lack_water.reduce_water_consumption == 1  ~ 2,
+      
+      ## 1
+      adopt_lack_water.spend_money_water == 1 |
+        adopt_lack_water.fetch_further_source == 1 |
+        adopt_lack_water.rely_unimproved_sources_for_other == 1 |
+        adopt_lack_water.rely_surface_water_other  ~ 1,
+      
+      ## 
+      TRUE ~ 0
+    ),
+    
+    
+    #### wash indicator 6 - temporary 2 ####
+    ## % Households using negative coping strategies to access sanitation facilities in the past 1 month/30 days
+    wash_tmp_idicator6_2 = case_when(
+      
+      ## 3
+      adapt_sanitation_issues.defecate_open == 1 |
+        adapt_sanitation_issues.going_dangerous_place == 1 ~ 3 ,
+      
+      ## 2
+      adapt_sanitation_issues.defecate_plastic_bags == 1 |
+        adapt_sanitation_issues.going_night == 1 ~ 2 ,
+      
+      ## 1
+      adapt_sanitation_issues.rely_unhygienic_facilities == 1 |
+        adapt_sanitation_issues.rely_comunal_facilities == 1 |
+        adapt_sanitation_issues.going_further_latrines == 1 ~ 1 ,
+      
+      ## 
+      TRUE ~ 0,
+      
+    ),
+    
+    
+    #### wash indicator 6 - temporary 3 ####
+    ## % Households using negative coping strategies to access hygienic or menstrual materials
+    wash_tmp_idicator6_3 = case_when(
+      
+      ## 3
+      adopt_sanitaiton_items.buyying_nfi_dangerous_market_places == 1 |
+        adopt_sanitaiton_items.reduce_nfi_consumption_personal == 1 ~ 3 ,
+      
+      ## 2
+      adopt_sanitaiton_items.reduce_nfi_consumption_other == 1 ~ 2,
+      
+      
+      ## 1
+      adopt_sanitaiton_items.rely_less_types_nfi == 1 | 
+        adopt_sanitaiton_items.rely_soap_substitutes == 1 |
+        adopt_sanitaiton_items.buyying_nfi_market == 1 |
+        adopt_sanitaiton_items.borrow_nfi_freind_relative == 1 |
+        adopt_sanitaiton_items.spend_money_nfi == 1 ~ 1,
+      
+      ## 
+      TRUE ~ 0
+      
+    )  ) 
   
   
   data_wash_indicators <- data_wash_indicators %>% mutate(
@@ -286,14 +286,14 @@ compute_indicators_wash <- function(data, indicators) {
   colnames(res) <- colnames(df)
   
   return(res)
-
+  
 }
 
 compute_indicators_education <- function(data, indicators) {
   
   
   df <- create_indicators_placeholder(data, indicators)
-
+  
   
   data_edu_prep <- data %>%
     rowwise() %>%
@@ -338,23 +338,26 @@ compute_indicators_education <- function(data, indicators) {
       total_remaining = total_enrolled - total_drop_out,
       
       total_edu_level_achieved = sum(tertiary_degree,
-        vocational_degree,
-        secondary_school,
-        middle_school,
-        primary_school,
-        quranic_school,
-        na.rm = T
+                                     vocational_degree,
+                                     secondary_school,
+                                     middle_school,
+                                     primary_school,
+                                     quranic_school,
+                                     na.rm = T
       )
     ) %>%
     ungroup()
-
-
-
+  
+  
+  
   data_edu_prep %>%
     mutate(
       #### education indicator 1 ####
       ### % of children dropping out of school in the previous year
       edu_idicator1 = case_when(
+        
+        school_age_children_cal == 0  ~ as.numeric(NA),
+        
         ## All school-aged children in the HH dropped out
         total_drop_out > 0 & total_remaining <= 0 ~ 4,
         
@@ -362,14 +365,17 @@ compute_indicators_education <- function(data, indicators) {
         total_drop_out > 0 & total_remaining > 0 ~ 3,
         
         ##No school-aged children in the HH dropped out 
-        total_drop_out == 0 | total_enrolled == 0 | school_age_children_cal == 0 ~ 1,
+        total_drop_out == 0 ~ 1,
         
-
+        
       ),
-
+      
       #### education indicator 2 ####
       ### % of school-aged children enrolled in school for the 2020-2021 school year
       edu_idicator2 = case_when(
+        
+        school_age_children_cal == 0 ~ as.numeric(NA),
+        
         ##No school-aged children in the households enrolled school
         (school_age_children_cal > 0 & (total_enrolled == 0)) ~ 4,
         
@@ -380,11 +386,11 @@ compute_indicators_education <- function(data, indicators) {
         (school_age_children_cal > 0 & ( (total_enrolled / school_age_children_cal >= 0.5) & (total_enrolled / school_age_children_cal < 1))) ~ 2,
         
         ##All school-aged children in the households attend school
-        (school_age_children_cal > 0 & (school_age_children_cal == total_enrolled)) | (school_age_children_cal == 0) ~ 1,
-
+        (school_age_children_cal > 0 & (school_age_children_cal == total_enrolled)) ~ 1,
+        
         
       ),
-
+      
       #### education indicator 3 ####
       ### % of adults by highest education level (primary, secondary and tertiary) achieved
       edu_idicator3 = case_when(
@@ -400,26 +406,30 @@ compute_indicators_education <- function(data, indicators) {
         ##All have achieved any education level
         total_edu_level_achieved == hh_adults_int ~ 1
       ),
-
+      
       #### education indicator 4 ####
       ### % of school-aged children attending school regularly (at least 4 days a week) in the 2020-2021 school year while schools were open, per age and sex group.
       edu_idicator4 = case_when(
+        
+        school_age_children_cal == 0 ~ as.numeric(NA),
+        
         ##No children attend regularly
         school_age_children_cal != 0 & total_attend == 0 ~ 4,
         
         ##Some children attending regularly
-        total_attend >0  ~ 3,
+        total_attend >0 & (school_age_children_cal < total_attend)  ~ 3,
         
         
         ##All children attending regularly
-        school_age_children_cal == 0 | (school_age_children_cal == total_attend) ~ 1
+        (school_age_children_cal == total_attend) ~ 1
       ),
       
       
     ) %>% select(starts_with("edu_idicator")) -> res
+  
 
   colnames(res) <- colnames(df)
-
+  
   return(res)
 }
 
@@ -440,19 +450,19 @@ compute_indicators_protection <- function(data, indicators) {
                  "consent_controller.washington_group_question.persons_having_difficulty_loop.difficult_communication")
   
   data_protection_prep <- left_join(data_protection_prep, loops_data_washington %>% mutate_at(col_names,
-          .funs = ~ case_when(
-            .x %in% c("a_lot_difficulty", "cannot_do_at_all") ~ 1,
-            TRUE ~ 0
-          )
-        ) %>% mutate(
-          member_has_diff = ifelse(rowSums(.[col_names], na.rm = TRUE) >= 1, 1, 0)
-        ) %>% group_by(`_parent_index`) %>% summarise(
-          hh_members_with_diff = sum(member_has_diff),
-        ) %>% select(index = `_parent_index`, hh_members_with_diff)) %>% mutate(
-          pct_with_diff = hh_members_with_diff / hh_size
-        )
-
-
+                                                                                              .funs = ~ case_when(
+                                                                                                .x %in% c("a_lot_difficulty", "cannot_do_at_all") ~ 1,
+                                                                                                TRUE ~ 0
+                                                                                              )
+  ) %>% mutate(
+    member_has_diff = ifelse(rowSums(.[col_names], na.rm = TRUE) >= 1, 1, 0)
+  ) %>% group_by(`_parent_index`) %>% summarise(
+    hh_members_with_diff = sum(member_has_diff),
+  ) %>% select(index = `_parent_index`, hh_members_with_diff)) %>% mutate(
+    pct_with_diff = hh_members_with_diff / hh_size
+  )
+  
+  
   data_protection_prep <- data_protection_prep %>% 
     mutate( 
       sent_abroad_hh = rowSums(.[grep("main_safety_concerns_.*\\.sent_abroad", names(.))], na.rm = TRUE),
@@ -470,14 +480,10 @@ compute_indicators_protection <- function(data, indicators) {
       injured_hh = rowSums(.[grep("main_safety_concerns_.*\\.injured", names(.))], na.rm = TRUE),
       dnk_prefer_not_answer_hh = rowSums(.[grep("main_safety_concerns_.*\\.(dnk$|prefer_not_answer$)", names(.))], na.rm = TRUE),
       members_with_diff_hh = rowSums(.[grep("_memb$", names(.))], na.rm = TRUE),
-      )  
+    )  
   
-
-    data_protection_prep %>% filter(killed_hh >= 1 ) %>% group_by(district) %>% summarise(n()) %>% View()
-    data_protection_prep %>% filter(mine_uxo_hh >= 1 ) %>% nrow ()
-    data_protection_prep %>% filter(fgm_hh >= 1 ) %>% nrow ()
-     
-    data_protection_prep %>% mutate(
+  
+  data_protection_prep %>% mutate(
     #### protection indicator 1 ####
     ## % of HHs reporting concerns from any harm, physical threats or discrimination in the area where they are living.
     protection_idicator1 = case_when(
@@ -502,7 +508,7 @@ compute_indicators_protection <- function(data, indicators) {
       
     ),
     
-  
+    
     #### protection indicator 2 ####
     ## % of HHs without access to offical law enforcement authorities and/or judiciary system
     protection_idicator2 = case_when(
@@ -558,7 +564,7 @@ compute_indicators_protection <- function(data, indicators) {
     ## % of individiuals in all households with at least one domain reportedly with A LOT OF DIFFICULTY or CANNOT DO AT ALL (disability level 3)
     protection_idicator5 = case_when(
       
-
+      
       ## If all members of a HH have a disability (a lot of difficulty/cannot do at all)
       pct_with_diff == 1 ~ 5,
       
@@ -578,7 +584,7 @@ compute_indicators_protection <- function(data, indicators) {
   colnames(res) <- colnames(df)
   
   return(res)
-
+  
   
 }
 
@@ -594,8 +600,8 @@ compute_indicators_snfi <- function(data, indicators) {
                                     stringsAsFactors = F
   )
   
-
-
+  
+  
   colnames(shlter_loop)[1]="shelter_type"
   
   shlter_loop <- left_join(shlter_loop,shelter_average_size)
@@ -605,7 +611,7 @@ compute_indicators_snfi <- function(data, indicators) {
     #x1 = paste(shelter_type,collapse = "#"),
     avg_size_shelter = mean(avg_size_shelter,na.rm=T)
   ) 
-
+  
   
   data_snfi_prep <- left_join(data, shelters_repeat %>% select(index=`_parent_index`,avg_size_shelter) )
   
@@ -631,25 +637,25 @@ compute_indicators_snfi <- function(data, indicators) {
   
   data_snfi_prep <- data_snfi_prep %>%
     mutate(
-     shelt_count.sum_rooms = as.numeric(shelt_count.sum_rooms)) %>%
+      shelt_count.sum_rooms = as.numeric(shelt_count.sum_rooms)) %>%
     mutate(
-     surface_per_person = (shelt_count.sum_rooms * avg_size_shelter) / hh_size,
-     ###YS     grep for nb_shelter_issues includes shelter_issues.no_issue
-     ### AB That's weird!! Looking at the tool shelter_issues doesn't have a no_issue option! But probably tool was updated at some point to remove the option
-     nb_shelter_issues = rowSums(.[grep("^(shelter_enclosure_issue|shelter_damage|shelter_issues)\\.(?!(none$|dnk$|prefer_not_answer$|no_issue$))",names(.),perl = T)], na.rm = TRUE),
-     HLP_problems = ifelse(rowSums(.[grep("^shelter_problems\\.(?!(none$|not_sure$))",names(.),perl = T)], na.rm = TRUE)>=1,"yes","no"),
-     nb_available_items = rowSums(.[grep("^currently_access_nfi\\.",names(.))], na.rm = TRUE)
+      surface_per_person = (shelt_count.sum_rooms * avg_size_shelter) / hh_size,
+      ###YS     grep for nb_shelter_issues includes shelter_issues.no_issue
+      ### AB That's weird!! Looking at the tool shelter_issues doesn't have a no_issue option! But probably tool was updated at some point to remove the option
+      nb_shelter_issues = rowSums(.[grep("^(shelter_enclosure_issue|shelter_damage|shelter_issues)\\.(?!(none$|dnk$|prefer_not_answer$|no_issue$))",names(.),perl = T)], na.rm = TRUE),
+      HLP_problems = ifelse(rowSums(.[grep("^shelter_problems\\.(?!(none$|not_sure$))",names(.),perl = T)], na.rm = TRUE)>=1,"yes","no"),
+      nb_available_items = rowSums(.[grep("^currently_access_nfi\\.",names(.))], na.rm = TRUE)
     ) 
-
-
   
-   data_snfi_prep %>% mutate(
+  
+  
+  data_snfi_prep %>% mutate(
     #### SNFI indicator 1 ####
     ## SNFI: % of HHs having adequate living space
     SNFI_idicator1 = case_when(
       ## surface per person < 2m2
       how_many_shelters == 0 |
-      surface_per_person < 2 ~ 5,
+        surface_per_person < 2 ~ 5,
       
       ## 2m2 ≤ surface per person < 2.5m2
       surface_per_person < 2.5 ~ 4,
@@ -715,7 +721,7 @@ compute_indicators_snfi <- function(data, indicators) {
     #### SNFI indicator 4 ####
     ## SNFI: % of HHs having security of tenure issues
     SNFI_idicator4 = case_when(
-  
+      
       
       ## Occupancy arrangement ="ownership" AND No HLP Problem AND Has written documentation
       shelter_occupancy == "ownership" & HLP_problems == "no" & shelter_format_doc == "yes" ~ 1,
@@ -751,7 +757,7 @@ compute_indicators_snfi <- function(data, indicators) {
       
     ),
     
-  
+    
   ) %>% select(starts_with("SNFI_idicator")) -> res
   
   
@@ -774,7 +780,7 @@ compute_indicators_gbv <- function(data, indicators) {
   )) %>% rename_at(gbv_cols,~ paste0(.x,"_int")) %>% select(uuid,all_of(paste0(gbv_cols,"_int"))) 
   
   data_gbv_prep <- left_join(data_gbv_prep,binary_gbv_cols)
-
+  
   
   data_gbv_prep <- data_gbv_prep %>%
     mutate(
@@ -787,9 +793,11 @@ compute_indicators_gbv <- function(data, indicators) {
       barriere_fear_not_equal_access_shame_selected = ifelse(rowSums(.[grep("^barriers_.*\\.(fear$|not_equal_service$|shame$)",names(.))], na.rm = TRUE)>=1,TRUE,FALSE),
       barriere_lack_trust_selected = ifelse(rowSums(.[grep("^barriers_.*\\.lack_trust$",names(.))], na.rm = TRUE)>=1,TRUE,FALSE),
       
-      ) %>% mutate(
-         barriers_access_services_gbv_count = rowSums(.[grep(".*_binary$",names(.))], na.rm = TRUE)
-       )
+    ) %>% mutate(
+      barriers_access_services_gbv_count = rowSums(.[grep(".*_binary$",names(.))], na.rm = TRUE)
+    )
+  
+  
   
   # data_gbv_prep %>% select(grep("^barriers_.*\\.(fear$|not_equal_service$|shame$)",names(.)),barriere_fear_not_equal_access_selected) %>%View()
   # 
@@ -799,20 +807,20 @@ compute_indicators_gbv <- function(data, indicators) {
   # data %>% filter(legal_protec == "yes") %>% select(starts_with("barriers_legal_protec.")) %>% summarise_all(sum, na.rm=T) %>% melt() %>%  View()
   # data %>% filter(livelihoods_s == "yes") %>% select(starts_with("barriers_livelihoods_s.")) %>% summarise_all(sum, na.rm=T) %>% melt() %>%  View()
   
-# 
-#   res %>% select(GBV_idicator1,GBV_idicator2) %>% View()
-#   
-#   data %>% select(grep("^unsafe_locations_girls_yes\\.(?!(no_unsafe_areas$|dnk$|decline_answer$))",names(.),perl = T)) %>% colnames()
-#   
-#   
-#   res %>% rowwise() %>%  mutate(
-#     av = (GBV_idicator1+GBV_idicator2)/2,
-#   ) %>% ungroup() %>% pull(av) %>% hist()
-#   
-#   data$barriers_mental_healths
+  # 
+  #   res %>% select(GBV_idicator1,GBV_idicator2) %>% View()
+  #   
+  #   data %>% select(grep("^unsafe_locations_girls_yes\\.(?!(no_unsafe_areas$|dnk$|decline_answer$))",names(.),perl = T)) %>% colnames()
+  #   
+  #   
+  #   res %>% rowwise() %>%  mutate(
+  #     av = (GBV_idicator1+GBV_idicator2)/2,
+  #   ) %>% ungroup() %>% pull(av) %>% hist()
+  #   
+  #   data$barriers_mental_healths
   
   
-
+  
   data_gbv_prep %>% mutate(
     #### GBV indicator 1 ####
     ## % of HHs with access to medical, legal and social services for women and girls
@@ -859,12 +867,13 @@ compute_indicators_gbv <- function(data, indicators) {
     ## % of HHs  with women and girls reporting lack of freedom to attend go about their duties/businessess
     GBV_idicator3 = case_when(
       ## No
-      women_move_freely == "no" ~ 4,
+      women_move_freely %in% c("no","don't_know") ~ 4,
       
       ## Yes
       women_move_freely == "yes" ~ 1,
       
     ),
+    
     
     
     
@@ -890,9 +899,8 @@ compute_indicators_gbv <- function(data, indicators) {
     ),
     
     
-  ) %>% select(starts_with("GBV_idicator")) -> res
+  )  %>% select(starts_with("GBV_idicator")) -> res
   
-
   
   colnames(res) <- colnames(df)
   
@@ -903,17 +911,17 @@ compute_indicators_gbv <- function(data, indicators) {
 compute_indicators_hlp <- function(data, indicators) {
   
   df <- create_indicators_placeholder(data, indicators)
- 
+  
   data_hlp_prep <- data
   
   data_hlp_prep %>% select(starts_with("hlp.land_dispute_yes.")) %>% colnames()
   
   data_hlp_prep <- data %>%
     mutate(
-     land_disputes_count = rowSums(.[grep("hlp\\.land_dispute_yes\\.", names(.))], na.rm = TRUE),
-        ) 
+      land_disputes_count = rowSums(.[grep("hlp\\.land_dispute_yes\\.", names(.))], na.rm = TRUE),
+    ) 
   
-
+  
   data_hlp_prep %>% mutate(
     #### HLP indicator 1 ####
     ## % of household reporting HLP disputes
@@ -974,31 +982,31 @@ compute_indicators_cp <- function(data, indicators) {
   data_cp_prep <- data
   
   col_names <- c("mental_health_supports_boys",
-    "mental_health_supports_girls",
-    "social_services_boys", 
-    "social_services_girls", 
-    "support_group_activites_boys",
-    "support_group_activites_girls")
-
+                 "mental_health_supports_girls",
+                 "social_services_boys", 
+                 "social_services_girls", 
+                 "support_group_activites_boys",
+                 "support_group_activites_girls")
+  
   
   
   data_cp_prep <- left_join(data_cp_prep,data_cp_prep %>%
-              mutate_at(col_names,
-                        .funs = ~ case_when(
-                          .x == "yes" ~ 1,
-                          TRUE ~ 0
-                        )
-              ) %>%
-              mutate(
-                mental_health_supports_boys_and_girl =  ifelse(rowSums(.[grep("^mental_health_supports_(boys|girls)$", names(.))], na.rm = TRUE)>=1,1,0),
-                social_services_boys_and_girl =  ifelse(rowSums(.[grep("^social_services_(boys|girls)$", names(.))], na.rm = TRUE)>=1,1,0),
-                support_group_activites_boys_and_girl =  ifelse(rowSums(.[grep("^support_group_activites_(boys|girls)$", names(.))], na.rm = TRUE)>=1,1,0)) %>%
-                mutate(
-                cp_services_accesible =  rowSums(.[grep("_boys_and_girl$", names(.))], na.rm = TRUE)
-              ) %>% select(uuid,cp_services_accesible))
+                              mutate_at(col_names,
+                                        .funs = ~ case_when(
+                                          .x == "yes" ~ 1,
+                                          TRUE ~ 0
+                                        )
+                              ) %>%
+                              mutate(
+                                mental_health_supports_boys_and_girl =  ifelse(rowSums(.[grep("^mental_health_supports_(boys|girls)$", names(.))], na.rm = TRUE)>=1,1,0),
+                                social_services_boys_and_girl =  ifelse(rowSums(.[grep("^social_services_(boys|girls)$", names(.))], na.rm = TRUE)>=1,1,0),
+                                support_group_activites_boys_and_girl =  ifelse(rowSums(.[grep("^support_group_activites_(boys|girls)$", names(.))], na.rm = TRUE)>=1,1,0)) %>%
+                              mutate(
+                                cp_services_accesible =  rowSums(.[grep("_boys_and_girl$", names(.))], na.rm = TRUE)
+                              ) %>% select(uuid,cp_services_accesible))
   
-
-
+  
+  
   data_cp_prep <- data_cp_prep %>%
     mutate(
       nb_children_working = rowSums(.[grep("^children_working\\.(?!(number_children_working))",names(.),perl = T)], na.rm = TRUE),
@@ -1042,7 +1050,7 @@ compute_indicators_cp <- function(data, indicators) {
       
     ),
     
-  
+    
     
     #### CP indicator 2 ####
     ## % of HHs by most common barriers to accessing child protection services faced by boys and girls
@@ -1081,14 +1089,14 @@ compute_indicators_cp <- function(data, indicators) {
       
       ## 1 Child (6-14) or (15-17) engaged in Child Labour
       nb_children_working == 1 ~ 3,
-     
+      
       ### YS should none reported be nb_children_working == 0 ? (includes also hh without children for sev1)
-      ### TODO AB Updated 
+      ### AB Updated 
       ## None Reported
       hh_children_int !=0 & nb_children_working == 0 ~1
-
+      
     ),) %>%  select(starts_with("CP_idicator")) -> res
-
+  
   
   colnames(res) <- colnames(df)
   
@@ -1101,9 +1109,9 @@ compute_indicators_eh <- function(data, indicators) {
   df <- create_indicators_placeholder(data, indicators)
   
   data_eh_prep <- data
-
   
-
+  
+  
   
   data_eh_prep %>% mutate(
     #### EH indicator 1 ####
@@ -1146,10 +1154,10 @@ compute_indicators_cccm <- function(data, indicators) {
   
   data_cccm_prep <- data
   
-
+  
   data_cccm_prep <- data_cccm_prep %>%
     mutate(
-
+      
     ) 
   
   data_cccm_prep %>% mutate(
@@ -1230,13 +1238,13 @@ compute_indicators_health <- function(data, indicators) {
     ## Percentage of population that can access primary healthcare within one hour’s walk from dwellings
     health_idicator1 = case_when(
       ## Access to primary healthcare exceeding 60 minutes’ walk for HH.
-      health_transportion == "foot" & time_nearest_health > 60 ~ 3,
+      # health_transportion == "foot" & 
+      time_nearest_health > 60 ~ 3,
       
       ## Access to primary healthcare within 60 minutes’ walk for HH.
       TRUE ~ 1,
       
     )
-    
     
   )  %>%  select(starts_with("health_idicator")) -> res
   
